@@ -24,39 +24,84 @@ class Maze:
                 [ ((x, y), (x+1, y)) for x in range(w-1) for y in range(h) ] + \
                 [ ((x, y), (x, y+1)) for x in range(w) for y in range(h-1) ]
 
-        offset = random.randrange(int((w+h) / 2))
-        self.entries = [ random.randrange(int((w+h) / 2)) + offset for _ in range(2) ]
-
         random.shuffle(edges)
         random.setstate(stored)
     
         blocks = { (x, y): [ (x, y) ] for y in range(h) for x in range(w) }
         to_join = len(blocks)
 
-#        print(f"To join: {to_join}")
+        self.walls = []
+        self.edges = []
 
-        self.edgelist = []
         for e in edges:
             a = blocks[e[0]]
             b = blocks[e[1]]
 
-#            print(f"Blocks are {a} and {b}")
-
             if a is b:
-                self.edgelist.append(e)
+                self.walls.append(e)
                 continue
 
             if len(b) < len(a):
                 a, b = b, a
 
-            for w in b:
-                blocks[w] = a
+            for cell in b:
+                blocks[cell] = a
 
             a += b
             to_join -= 1
-#            print(f"Joined at {e}")
+            self.edges.append(e)
 
-#        print(blocks)
+        d = self.distances((0,0))
+        for p in sorted(d, key=lambda x: d[x], reverse=True):
+            if p[0] != 0 and p[0] != w-1 and p[1] != 0 and p[1] != h-1:
+                continue
+            
+            ea = p
+            break
+        
+        d = self.distances(ea)
+        for p in sorted(d, key=lambda x: d[x], reverse=True):
+            if p[0] != 0 and p[0] != w-1 and p[1] != 0 and p[1] != h-1:
+                continue
+            
+            eb = p
+            break
+
+        dd = self.distances(eb)
+        self.complexity = (
+                sum([ x**2 for x in dd.values()]) +
+                sum([ x**2 for x in d.values() ])
+                )**0.5 / (w*h)
+        
+        print(f"Generated: {w}x{h}, seed={seed}, cpx={self.complexity:.4f}, plen={dd[ea]}|{d[eb]}, entries {ea} {eb}")
+        self.entries = [ ea, eb ]
+
+    def distances(self, start):
+        finished = []
+        unfinished = [ start ]
+        d = { start: 0 }
+
+        while len(unfinished):
+            p = unfinished.pop()
+            for n in (
+                    (p[0]-1, p[1]),
+                    (p[0]+1, p[1]),
+                    (p[0], p[1]-1),
+                    (p[0], p[1]+1)
+                    ):
+                if n in finished:
+                    continue
+                if (p,n) in self.edges or (n,p) in self.edges:
+                    d[n] = d[p] + 1
+                    unfinished.append(n)
+            finished.append(p)
+
+        if len(d) == self.h * self.w:
+            return d
+        else:
+            raise Exception(d)
+
+
 
 class PDF:
     mm = 72 / 25.4
@@ -79,44 +124,67 @@ class PDF:
         hbs = self.rw / maze.w
         vbs = self.rh / maze.h
 
-        for e in maze.edgelist:
+        for e in maze.walls:
             self.context.move_to(hbs *  e[1][0]   , vbs *  e[1][1]     )
             self.context.line_to(hbs * (e[0][0]+1), vbs * (e[0][1] + 1))
             self.context.stroke()
 
-        if maze.entries[0] >= maze.w:
-            self.context.move_to(0,0)
-            self.context.line_to(self.rw,0)
-            self.context.line_to(self.rw,(maze.entries[0]-maze.w)*vbs)
-            self.context.rel_move_to(0,vbs)
-            self.context.line_to(self.rw,self.rh)
+        self.context.move_to(0,0)
+        self.context.line_to(self.rw,0)
+        self.context.line_to(self.rw,self.rh)
+        self.context.line_to(0,self.rh)
+        self.context.close_path()
+        self.context.stroke()
+
+        entry_width = 0.8
+
+        for e in maze.entries:
+            arrowfrom = None
+            self.context.save()
+            self.context.set_source_rgba(1,1,1,1)
+            self.context.set_line_width(2)
+            if e[0] == 0:
+                self.context.move_to(0, ((e[1]+(1-entry_width)/2)*vbs))
+                self.context.rel_line_to(0, vbs*entry_width)
+                arrowfrom = (-1, e[1])
+            elif e[0] == maze.w-1:
+                self.context.move_to(self.rw, (e[1] + (1-entry_width)/2)*vbs)
+                self.context.rel_line_to(0, vbs*entry_width)
+                arrowfrom = (maze.w, e[1])
+            elif e[1] == 0:
+                self.context.move_to((e[0] + (1-entry_width)/2)*hbs, 0)
+                self.context.rel_line_to(hbs*entry_width, 0)
+                arrowfrom = (e[0], -1)
+            elif e[1] == maze.h-1:
+                self.context.move_to((e[0] + (1-entry_width)/2)*hbs, self.rh)
+                self.context.rel_line_to(hbs*entry_width, 0)
+                arrowfrom = (e[0], maze.h)
+            else:
+                raise Exception(e)
+
             self.context.stroke()
-        else:
-            self.context.move_to(0,0)
-            self.context.line_to(maze.entries[0]*hbs,0)
-            self.context.rel_move_to(hbs,0)
-            self.context.line_to(self.rw,0)
-            self.context.line_to(self.rw,self.rh)
+            self.context.restore()
+
+            self.context.move_to((arrowfrom[0]+0.5)*hbs, (arrowfrom[1]+0.5)*vbs)
+            self.context.line_to((e[0]+0.5)*hbs, (e[1]+0.5)*vbs)
             self.context.stroke()
 
-        if maze.entries[1] >= maze.w:
-            self.context.move_to(self.rw,self.rh)
-            self.context.line_to(0,self.rh)
-            self.context.rel_line_to(0,(maze.w - maze.entries[1])*vbs)
-            self.context.rel_move_to(0,-vbs)
-            self.context.line_to(0,0)
-            self.context.stroke()
-        else:
-            self.context.move_to(self.rw,self.rh)
-            self.context.rel_line_to(-maze.entries[1] * hbs, 0)
-            self.context.rel_move_to(-hbs, 0)
-            self.context.line_to(0,self.rh)
-            self.context.line_to(0,0)
-            self.context.stroke()
+            self.context.move_to((e[0]+0.5)*hbs, (e[1]+0.5)*vbs)
+            self.context.rel_line_to(
+                    (arrowfrom[0]-e[0])*0.3*hbs + (arrowfrom[1]-e[1])*0.1*hbs,
+                    (arrowfrom[1]-e[1])*0.3*vbs + (arrowfrom[0]-e[0])*0.1*vbs
+                    )
+            self.context.rel_line_to(
+                    -(arrowfrom[1]-e[1])*0.2*hbs,
+                    -(arrowfrom[0]-e[0])*0.2*vbs
+                    )
+            self.context.close_path()
+            self.context.fill()
 
         self.context.move_to(0, self.rh + 6*self.mm)
-        self.context.show_text(f"{maze.w} | {maze.h} | {maze.seed}")
+        self.context.show_text(f"{maze.w} | {maze.h} | {maze.seed} | complexity: {maze.complexity:.4f}")
         self.context.show_page()
 
 if __name__ == "__main__":
     PDF().draw([Maze(35,50,seed) for seed in range(50)])
+#    PDF().draw([Maze(15,21,1)])
