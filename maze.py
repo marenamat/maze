@@ -5,8 +5,6 @@ from contextlib import contextmanager
 import random
 import cairo
 
-mm = 72 / 25.4
-
 # Maze entry numbering:
 #   top:     0     .. (w-1)
 #   right:   w     .. (w+h-1)
@@ -17,6 +15,7 @@ class Maze:
     def __init__(self, w, h, seed):
         self.w = w
         self.h = h
+        self.seed = seed
 
         stored = random.getstate()
         random.seed(seed)
@@ -59,59 +58,65 @@ class Maze:
 
 #        print(blocks)
 
-page_width  = 210*mm
-page_height = 297*mm
-margin_lr   =  20*mm
-margin_tb   =  25*mm
+class PDF:
+    mm = 72 / 25.4
+    def __init__(self, file_name="maze.pdf", page_width=210*mm, page_height=297*mm, margin_lr=20*mm, margin_tb=30*mm):
+        self.surface = cairo.PDFSurface(file_name, page_width, page_height)
+        self.context = cairo.Context(self.surface)
+        self.context.translate(margin_lr, margin_tb)
+        self.context.set_line_cap(cairo.LINE_CAP_ROUND)
+        self.context.set_line_width(1)
 
-context = cairo.Context(cairo.PDFSurface("maze.pdf", page_width, page_height))
-context.translate(margin_lr, margin_tb)
-context.set_line_cap(cairo.LINE_CAP_ROUND)
-context.set_line_width(1)
+        self.rw = page_width - margin_lr*2
+        self.rh = page_height - margin_tb*2
 
-rw = page_width - margin_lr*2
-rh = page_height - margin_tb*2
+    def draw(self, maze):
+        if type(maze) is list:
+            for m in maze:
+                self.draw(m)
+            return
 
-def draw(maze):
-    hbs = rw / maze.w
-    vbs = rh / maze.h
+        hbs = self.rw / maze.w
+        vbs = self.rh / maze.h
 
-    for e in maze.edgelist:
-        context.move_to(hbs *  e[1][0]   , vbs *  e[1][1]     )
-        context.line_to(hbs * (e[0][0]+1), vbs * (e[0][1] + 1))
-        context.stroke()
+        for e in maze.edgelist:
+            self.context.move_to(hbs *  e[1][0]   , vbs *  e[1][1]     )
+            self.context.line_to(hbs * (e[0][0]+1), vbs * (e[0][1] + 1))
+            self.context.stroke()
 
-    if maze.entries[0] >= maze.w:
-        context.move_to(0,0)
-        context.line_to(rw,0)
-        context.line_to(rw,(maze.entries[0]-maze.w)*vbs)
-        context.rel_move_to(0,vbs)
-        context.line_to(rw,rh)
-        context.stroke()
-    else:
-        context.move_to(0,0)
-        context.line_to(maze.entries[0]*hbs,0)
-        context.rel_move_to(hbs,0)
-        context.line_to(rw,0)
-        context.line_to(rw,rh)
-        context.stroke()
+        if maze.entries[0] >= maze.w:
+            self.context.move_to(0,0)
+            self.context.line_to(self.rw,0)
+            self.context.line_to(self.rw,(maze.entries[0]-maze.w)*vbs)
+            self.context.rel_move_to(0,vbs)
+            self.context.line_to(self.rw,self.rh)
+            self.context.stroke()
+        else:
+            self.context.move_to(0,0)
+            self.context.line_to(maze.entries[0]*hbs,0)
+            self.context.rel_move_to(hbs,0)
+            self.context.line_to(self.rw,0)
+            self.context.line_to(self.rw,self.rh)
+            self.context.stroke()
 
-    if maze.entries[1] >= maze.w:
-        context.move_to(rw,rh)
-        context.line_to(0,rh)
-        context.rel_line_to(0,(maze.w - maze.entries[1])*vbs)
-        context.rel_move_to(0,-vbs)
-        context.line_to(0,0)
-        context.stroke()
-    else:
-        context.move_to(rw,rh)
-        context.rel_line_to(-maze.entries[1] * hbs, 0)
-        context.rel_move_to(-hbs, 0)
-        context.line_to(0,rh)
-        context.line_to(0,0)
-        context.stroke()
+        if maze.entries[1] >= maze.w:
+            self.context.move_to(self.rw,self.rh)
+            self.context.line_to(0,self.rh)
+            self.context.rel_line_to(0,(maze.w - maze.entries[1])*vbs)
+            self.context.rel_move_to(0,-vbs)
+            self.context.line_to(0,0)
+            self.context.stroke()
+        else:
+            self.context.move_to(self.rw,self.rh)
+            self.context.rel_line_to(-maze.entries[1] * hbs, 0)
+            self.context.rel_move_to(-hbs, 0)
+            self.context.line_to(0,self.rh)
+            self.context.line_to(0,0)
+            self.context.stroke()
 
-    context.show_page()
+        self.context.move_to(0, self.rh + 6*self.mm)
+        self.context.show_text(f"{maze.w} | {maze.h} | {maze.seed}")
+        self.context.show_page()
 
-for seed in range(50):
-    draw(Maze(35,50,seed))
+if __name__ == "__main__":
+    PDF().draw([Maze(35,50,seed) for seed in range(50)])
