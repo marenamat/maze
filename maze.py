@@ -4,6 +4,7 @@ from contextlib import contextmanager
 
 import random
 import cairo
+import math
 
 # Maze entry numbering:
 #   top:     0     .. (w-1)
@@ -105,7 +106,7 @@ class Maze:
 
 class PDF:
     mm = 72 / 25.4
-    def __init__(self, file_name="maze.pdf", page_width=210*mm, page_height=297*mm, margin_lr=20*mm, margin_tb=30*mm):
+    def __init__(self, file_name="maze.pdf", page_width=210*mm, page_height=297*mm, margin_lr=20*mm, margin_tb=30*mm, show_arrows=False):
         self.surface = cairo.PDFSurface(file_name, page_width, page_height)
         self.context = cairo.Context(self.surface)
         self.context.translate(margin_lr, margin_tb)
@@ -114,6 +115,8 @@ class PDF:
 
         self.rw = page_width - margin_lr*2
         self.rh = page_height - margin_tb*2
+
+        self.show_arrows = show_arrows
 
     def draw(self, maze):
         if type(maze) is list:
@@ -136,7 +139,13 @@ class PDF:
         self.context.close_path()
         self.context.stroke()
 
-        entry_width = 0.8
+        entry_width = 0.6
+        arrowlen = 1.5
+        arrowwidth = 0.2
+
+        bottomleftpoint = False
+        topleftpoint = False
+        bottompoint_x = None
 
         for e in maze.entries:
             arrowfrom = None
@@ -146,42 +155,63 @@ class PDF:
             if e[0] == 0:
                 self.context.move_to(0, ((e[1]+(1-entry_width)/2)*vbs))
                 self.context.rel_line_to(0, vbs*entry_width)
-                arrowfrom = (-1, e[1])
+                arrowfrom = (-arrowlen, e[1])
             elif e[0] == maze.w-1:
                 self.context.move_to(self.rw, (e[1] + (1-entry_width)/2)*vbs)
                 self.context.rel_line_to(0, vbs*entry_width)
-                arrowfrom = (maze.w, e[1])
+                arrowfrom = (maze.w-1+arrowlen, e[1])
             elif e[1] == 0:
                 self.context.move_to((e[0] + (1-entry_width)/2)*hbs, 0)
                 self.context.rel_line_to(hbs*entry_width, 0)
-                arrowfrom = (e[0], -1)
+                arrowfrom = (e[0], -arrowlen)
+                if e[0]*2 < maze.w:
+                    topleftpoint = True
             elif e[1] == maze.h-1:
                 self.context.move_to((e[0] + (1-entry_width)/2)*hbs, self.rh)
                 self.context.rel_line_to(hbs*entry_width, 0)
-                arrowfrom = (e[0], maze.h)
+                arrowfrom = (e[0], maze.h-1+arrowlen)
+                if e[0]*2 < maze.w:
+                    bottomleftpoint = True
+                    bottompoint_x = e[0]
             else:
                 raise Exception(e)
 
             self.context.stroke()
             self.context.restore()
 
-            self.context.move_to((arrowfrom[0]+0.5)*hbs, (arrowfrom[1]+0.5)*vbs)
-            self.context.line_to((e[0]+0.5)*hbs, (e[1]+0.5)*vbs)
-            self.context.stroke()
+            if self.show_arrows:
+                self.context.move_to((arrowfrom[0]+0.5)*hbs, (arrowfrom[1]+0.5)*vbs)
+                self.context.line_to((e[0]+0.5)*hbs, (e[1]+0.5)*vbs)
+                self.context.stroke()
 
-            self.context.move_to((e[0]+0.5)*hbs, (e[1]+0.5)*vbs)
-            self.context.rel_line_to(
-                    (arrowfrom[0]-e[0])*0.3*hbs + (arrowfrom[1]-e[1])*0.1*hbs,
-                    (arrowfrom[1]-e[1])*0.3*vbs + (arrowfrom[0]-e[0])*0.1*vbs
-                    )
-            self.context.rel_line_to(
-                    -(arrowfrom[1]-e[1])*0.2*hbs,
-                    -(arrowfrom[0]-e[0])*0.2*vbs
-                    )
+                self.context.move_to((e[0]+0.5)*hbs, (e[1]+0.5)*vbs)
+                self.context.rel_line_to(
+                        (arrowfrom[0]-e[0])*0.5*hbs + (arrowfrom[1]-e[1])*arrowwidth*0.5*hbs,
+                        (arrowfrom[1]-e[1])*0.5*vbs + (arrowfrom[0]-e[0])*arrowwidth*0.5*vbs
+                        )
+                self.context.rel_line_to(
+                        -(arrowfrom[1]-e[1])*arrowwidth*hbs,
+                        -(arrowfrom[0]-e[0])*arrowwidth*vbs
+                        )
+                self.context.close_path()
+                self.context.fill()
+
+            self.context.save()
+            self.context.translate((arrowfrom[0]+0.5)*hbs, (arrowfrom[1]+0.5)*vbs)
+            self.context.scale(hbs, vbs)
+            self.context.arc(0,0,0.4,0,math.atan2(1,1)*8)
             self.context.close_path()
             self.context.fill()
+            self.context.restore()
 
-        self.context.move_to(0, self.rh + 6*self.mm)
+        if bottomleftpoint:
+            if topleftpoint:
+                self.context.move_to((bottompoint_x + 3) * hbs, self.rh + 4.5*self.mm)
+            else:
+                self.context.move_to(0, -2*self.mm)
+        else:
+            self.context.move_to(0, self.rh + 4.5*self.mm)
+
         self.context.show_text(f"{maze.w} | {maze.h} | {maze.seed} | complexity: {maze.complexity:.4f}")
         self.context.show_page()
 
