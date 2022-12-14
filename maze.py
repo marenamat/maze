@@ -31,15 +31,15 @@ class Maze:
         blocks = { (x, y): [ (x, y) ] for y in range(h) for x in range(w) }
         to_join = len(blocks)
 
-        self.walls = []
-        self.edges = []
+        self.walls = {}
+        self.edges = {}
 
         for e in edges:
             a = blocks[e[0]]
             b = blocks[e[1]]
 
             if a is b:
-                self.walls.append(e)
+                self.walls[e] = True
                 continue
 
             if len(b) < len(a):
@@ -50,7 +50,7 @@ class Maze:
 
             a += b
             to_join -= 1
-            self.edges.append(e)
+            self.edges[e] = True
 
         d = self.distances((0,0))
         for p in sorted(d, key=lambda x: d[x], reverse=True):
@@ -78,7 +78,7 @@ class Maze:
         self.entries = [ ea, eb ]
 
     def distances(self, start):
-        finished = []
+        finished = {}
         unfinished = [ start ]
         d = { start: 0 }
 
@@ -95,7 +95,7 @@ class Maze:
                 if (p,n) in self.edges or (n,p) in self.edges:
                     d[n] = d[p] + 1
                     unfinished.append(n)
-            finished.append(p)
+            finished[p] = True
 
         if len(d) == self.h * self.w:
             return d
